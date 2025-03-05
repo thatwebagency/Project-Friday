@@ -1,3 +1,4 @@
 /migrations
 /venv
 .env
+.DS_Store

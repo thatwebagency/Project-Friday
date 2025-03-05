@@ -13,6 +13,8 @@ from datetime import datetime
 import os
 from dotenv import load_dotenv
 from flask_migrate import Migrate
+import spotipy
+from spotipy.oauth2 import SpotifyOAuth, SpotifyClientCredentials
 
 load_dotenv()  # This loads the .env file
 
@@ -22,7 +24,43 @@ db.init_app(app)
 migrate = Migrate(app, db)
 
 ha_client = None  # Only used for setup/configuration now
+spotify_client = None
 logger = logging.getLogger(__name__)
+
+def initialize_spotify_client():
+    """Initialize the Spotify client if credentials are configured"""
+    global spotify_client
+    try:
+        client_id = os.getenv('SPOTIPY_CLIENT_ID')
+        client_secret = os.getenv('SPOTIPY_CLIENT_SECRET')
+        
+        if not client_id or not client_secret:
+            logger.warning('Spotify credentials not configured')
+            return None
+            
+        auth_manager = SpotifyOAuth(
+            client_id=client_id,
+            client_secret=client_secret,
+            redirect_uri='http://localhost:8888',
+            scope='user-read-playback-state user-modify-playback-state playlist-read-private user-top-read user-read-currently-playing streaming user-follow-read user-read-playback-position user-read-recently-played user-library-read',
+            open_browser=False
+        )
+        spotify_client = spotipy.Spotify(auth_manager=auth_manager)
+        spotify_client.me()  # Test the connection
+        logger.info('Spotify client initialized successfully')
+        return spotify_client
+    except Exception as e:
+        logger.error(f'Failed to initialize Spotify client: {str(e)}')
+        return None
+
+def get_spotify_client():
+    """Get the global Spotify client, initializing it if necessary"""
+    global spotify_client
+    if spotify_client is None:
+        spotify_client = initialize_spotify_client()
+    if spotify_client is None:
+        raise Exception('Spotify not configured or initialization failed')
+    return spotify_client
 
 @app.before_request
 def check_setup():
@@ -305,7 +343,7 @@ def get_weather_forecast():
             return jsonify({'error': 'Weather API key not configured. Please set WEATHER_API_KEY in your environment variables.'}), 500
         
         # Add aqi=yes to get air quality data
-        url = f"http://api.weatherapi.com/v1/forecast.json?key={api_key}&q={location}&days=1&aqi=yes"
+        url = f"http://api.weatherapi.com/v1/forecast.json?key={api_key}&q={location}&days=3&aqi=yes"
         response = requests.get(url)
         response.raise_for_status()
         
@@ -564,7 +602,398 @@ def reorder_room_entities(room_id):
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
+@app.route("/api/media_proxy/<path:entity_picture>")
+def media_proxy(entity_picture):
+    try:
+        config = Configuration.query.first()
+        if not config:
+            return jsonify({'error': 'Home Assistant not configured'}), 400
+
+        # Construct the full URL to the media
+        ha_url = config.ha_url.rstrip('/')
+        full_url = f"{ha_url}/{entity_picture}"
+
+        # Make the request to Home Assistant with the access token
+        headers = {
+            'Authorization': f'Bearer {config.access_token}',
+            'Accept': 'image/*'
+        }
+        
+        response = requests.get(full_url, headers=headers)
+        response.raise_for_status()
+
+        # Forward the content type header
+        return Response(
+            response.content,
+            content_type=response.headers['content-type'],
+            status=200
+        )
+
+    except Exception as e:
+        logger.error(f"Error proxying media: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/settings/spotify', methods=['GET', 'POST'])
+def spotify_settings():
+    if request.method == 'POST':
+        data = request.json
+        client_id = data.get('client_id')
+        client_secret = data.get('client_secret')
+        
+        try:
+            # Test the credentials
+            auth_manager = SpotifyClientCredentials(
+                client_id=client_id,
+                client_secret=client_secret
+            )
+            sp = spotipy.Spotify(auth_manager=auth_manager)
+            
+            # Test the connection with a simple API call
+            sp.search(q='test', limit=1)
+            
+            # Save credentials to .env if test was successful
+            save_spotify_credentials(client_id, client_secret)
+            
+            return jsonify({'status': 'success'})
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 400
+            
+    # GET request - return saved credentials
+    return jsonify({
+        'client_id': os.getenv('SPOTIPY_CLIENT_ID', ''),
+        'client_secret': os.getenv('SPOTIPY_CLIENT_SECRET', '')
+    })
+
+@app.route('/api/spotify/status')
+def spotify_status():
+    client_id = os.getenv('SPOTIPY_CLIENT_ID')
+    client_secret = os.getenv('SPOTIPY_CLIENT_SECRET')
+    
+    if not client_id or not client_secret:
+        return jsonify({'connected': False})
+        
+    try:
+        auth_manager = SpotifyClientCredentials(
+            client_id=client_id,
+            client_secret=client_secret
+        )
+        sp = spotipy.Spotify(auth_manager=auth_manager)
+        sp.search(q='test', limit=1)  # Test the connection
+        return jsonify({'connected': True})
+    except:
+        return jsonify({'connected': False})
+
+def save_spotify_credentials(client_id, client_secret):
+    # Read existing .env file
+    env_path = '.env'
+    env_lines = []
+    if os.path.exists(env_path):
+        with open(env_path, 'r') as f:
+            env_lines = f.readlines()
+
+    # Update or add Spotify credentials
+    spotify_vars = {
+        'SPOTIPY_CLIENT_ID': client_id,
+        'SPOTIPY_CLIENT_SECRET': client_secret
+    }
+
+    # Process existing lines
+    updated_lines = []
+    existing_vars = set()
+    
+    for line in env_lines:
+        line = line.strip()
+        if not line or line.startswith('#'):
+            updated_lines.append(line)
+            continue
+            
+        key = line.split('=')[0]
+        if key in spotify_vars:
+            updated_lines.append(f'{key}={spotify_vars[key]}')
+            existing_vars.add(key)
+        else:
+            updated_lines.append(line)
+
+    # Add any missing variables
+    for key, value in spotify_vars.items():
+        if key not in existing_vars:
+            updated_lines.append(f'{key}={value}')
+
+    # Write back to .env file
+    with open(env_path, 'w') as f:
+        f.write('\n'.join(updated_lines) + '\n')
+    
+    # Reload environment variables
+    load_dotenv(override=True)
+
+@app.route('/api/spotify/current_playback')
+def get_current_playback():
+    try:
+        sp = get_spotify_client()
+        playback = sp.current_playback()
+        return jsonify(playback if playback else None)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/spotify/playback/toggle', methods=['POST'])
+def toggle_playback():
+    try:
+        sp = get_spotify_client()
+        current_playback = sp.current_playback()
+        
+        if current_playback and current_playback['is_playing']:
+            sp.pause_playback()
+        else:
+            sp.start_playback()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/spotify/playback/next', methods=['POST'])
+def next_track():
+    try:
+        sp = get_spotify_client()
+        sp.next_track()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/spotify/playback/previous', methods=['POST'])
+def previous_track():
+    try:
+        sp = get_spotify_client()
+        sp.previous_track()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/spotify/devices')
+def get_devices():
+    try:
+        sp = get_spotify_client()
+        devices = sp.devices()
+        return jsonify(devices)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/spotify/playback/device', methods=['POST'])
+def change_device():
+    try:
+        sp = get_spotify_client()
+        device_id = request.json.get('device_id')
+        
+        if not device_id:
+            return jsonify({'error': 'No device ID provided'}), 400
+            
+        # Transfer playback to selected device
+        sp.transfer_playback(device_id=device_id)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+def setup_spotify():
+    """Interactive CLI setup for Spotify OAuth"""
+    print("\n=== Spotify Setup ===")
+    setup_spotify = input("Would you like to set up Spotify integration? (y/n): ").lower().strip()
+    
+    if setup_spotify != 'y':
+        return False
+        
+    # Get credentials from user
+    client_id = input("Enter your Spotify Client ID: ").strip()
+    client_secret = input("Enter your Spotify Client Secret: ").strip()
+    
+    # Save credentials to .env
+    env_values = {}
+    if os.path.exists('.env'):
+        with open('.env', 'r') as f:
+            for line in f:
+                if '=' in line:
+                    key, value = line.strip().split('=', 1)
+                    env_values[key] = value
+    
+    env_values.update({
+        'SPOTIPY_CLIENT_ID': client_id,
+        'SPOTIPY_CLIENT_SECRET': client_secret,
+        'SPOTIPY_REDIRECT_URI': 'http://localhost:8888'
+    })
+    
+    # Write updated values to .env
+    with open('.env', 'w') as f:
+        for key, value in env_values.items():
+            f.write(f'{key}={value}\n')
+    
+    # Reload environment variables
+    load_dotenv(override=True)
+    
+    print("\nInitiating Spotify authentication...")
+    try:
+        # Initialize Spotify with OAuth
+        spotify = spotipy.Spotify(auth_manager=SpotifyOAuth(
+            client_id=client_id,
+            client_secret=client_secret,
+            redirect_uri='http://localhost:8888',
+            scope='user-read-playback-state user-modify-playback-state playlist-read-private user-top-read user-read-currently-playing streaming user-follow-read user-read-playback-position user-read-recently-played user-library-read',
+            open_browser=False
+        ))
+        
+        # Test the connection
+        user_info = spotify.me()
+        print(f"\nSuccessfully connected to Spotify as: {user_info['display_name']}")
+        return True
+        
+    except Exception as e:
+        print(f"\nError connecting to Spotify: {str(e)}")
+        return False
+
+def is_spotify_configured():
+    """Check if Spotify is configured and working"""
+    client_id = os.getenv('SPOTIPY_CLIENT_ID')
+    client_secret = os.getenv('SPOTIPY_CLIENT_SECRET')
+    
+    if not client_id or not client_secret:
+        return False
+        
+    try:
+        # Test the connection
+        spotify = spotipy.Spotify(auth_manager=SpotifyOAuth(
+            client_id=client_id,
+            client_secret=client_secret,
+            redirect_uri='http://localhost:8888',
+            scope='user-read-playback-state user-modify-playback-state playlist-read-private user-top-read user-read-currently-playing streaming user-follow-read user-read-playback-position user-read-recently-played user-library-read',
+            open_browser=False
+        ))
+        spotify.me()  # Test the connection
+        return True
+    except:
+        return False
+
+@app.route('/api/spotify/library')
+def get_spotify_library():
+    try:
+        sp = get_spotify_client()
+        
+        # Get user's playlists
+        playlists = sp.current_user_playlists(limit=20)
+        
+        # Get user's top artists and tracks
+        top_artists = sp.current_user_top_artists(limit=20, time_range='medium_term')
+        top_tracks = sp.current_user_top_tracks(limit=20, time_range='medium_term')
+        
+        return jsonify({
+            'playlists': playlists['items'],
+            'top_artists': top_artists['items'],
+            'top_tracks': top_tracks['items']
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/media_players')
+def get_media_players():
+    try:
+        # Query for all media_player entities
+        media_players = Entity.query.filter_by(domain='media_player').all()
+        
+        # Format the response
+        players = [{
+            'entity_id': player.entity_id,
+            'name': player.name,
+            'domain': player.domain,
+            'rooms': [{'id': room.id, 'name': room.name} for room in player.rooms]
+        } for player in media_players]
+        
+        return jsonify(players)
+    except Exception as e:
+        logger.error(f"Error getting media players: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/spotify/search')
+def spotify_search():
+    try:
+        query = request.args.get('q')
+        if not query:
+            return jsonify({'error': 'No search query provided'}), 400
+
+        sp = get_spotify_client()
+        
+        # Search across tracks, artists, and playlists
+        results = sp.search(
+            q=query,
+            limit=8,  # Limit results per category
+            type='track,artist,playlist'
+        )
+        
+        return jsonify({
+            'tracks': results['tracks']['items'],
+            'artists': results['artists']['items'],
+            'playlists': results['playlists']['items']
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == "__main__":
+    # Check each required environment variable individually
+    env_vars = {
+        'WEATHER_API_KEY': {
+            'prompt': "\nYou'll need a Weather API key from weatherapi.com\nEnter your Weather API key: ",
+            'validate': lambda key: requests.get(f"http://api.weatherapi.com/v1/current.json?key={key}&q=London").status_code == 200
+        },
+        'LOCATION': {
+            'prompt': "\nEnter your location (city name or coordinates): ",
+            'validate': lambda x: bool(x.strip())
+        }
+    }
+
+    # Read existing .env file if it exists
+    env_values = {}
+    if os.path.exists('.env'):
+        with open('.env', 'r') as f:
+            for line in f:
+                if '=' in line:
+                    key, value = line.strip().split('=', 1)
+                    env_values[key] = value
+
+    env_updated = False
+    print("\n=== Project Friday Environment Setup ===")
+
+    # Check each variable and prompt if missing or invalid
+    for var_name, config in env_vars.items():
+        current_value = os.getenv(var_name) or env_values.get(var_name)
+        
+        # Skip if value exists and is valid
+        if current_value and config['validate'](current_value):
+            env_values[var_name] = current_value
+            continue
+
+        # Prompt for missing or invalid value
+        while True:
+            value = input(config['prompt']).strip()
+            try:
+                if config['validate'](value):
+                    env_values[var_name] = value
+                    env_updated = True
+                    break
+                print(f"Invalid {var_name}. Please try again.")
+            except:
+                print(f"Error validating {var_name}. Please try again.")
+
+    # Update .env file if changes were made
+    if env_updated:
+        with open('.env', 'w') as f:
+            for key, value in env_values.items():
+                f.write(f'{key}={value}\n')
+        print("\nEnvironment configuration saved successfully!")
+        # Reload environment variables
+        load_dotenv(override=True)
+    
+    
+    # Only setup Spotify if not already configured
+    if not is_spotify_configured():
+        spotify_configured = setup_spotify()
+    
+    # Initialize Spotify client at startup
+    initialize_spotify_client()
     with app.app_context():
         db.create_all()
     app.run(host='0.0.0.0', port=8165, debug=True)
