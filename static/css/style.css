@@ -1126,8 +1126,7 @@
         transition: all 0.3s ease;
         position: relative;
         padding: 20px;
-        background: rgb(40, 40, 41);
-        opacity:0.8;
+        background: #f7f7f7;
         border-radius: 12px;
         aspect-ratio: 1;
         display: flex;
@@ -1135,9 +1134,8 @@
         justify-content: space-between;
     }
     
-    .light-card[data-state="on"], .light-card:hover {
-        background-color: rgb(40, 40, 41);
-        opacity:1;
+    .light-card[data-state="on"] {
+        background-color: black;
     }
     
     .light-card[data-state="on"] .device-name,
@@ -1161,7 +1159,7 @@
         width: 60px;
         height: 60px;
         border-radius: 50%;
-        background: transparent;
+        background: white;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -1170,8 +1168,8 @@
     }
     
     .light-card[data-state="on"] .toggle-circle {
-        background: transparent;
-        color: rgb(244, 191, 63);
+        background: #ffdf67;
+        color: #000000;
     }
     
     .toggle-circle img {
@@ -1915,7 +1913,7 @@
         width: 60px;
         height: 60px;
         border-radius: 50%;
-        
+        background: white;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -2097,9 +2095,9 @@
     }
     
     .device-name {
-        font-size: 18px;
+        font-size: 14px;
         font-weight: 300;
-        color: #9e9e9e;
+        color: #434343;
         margin-top: auto;
     }
     
@@ -2117,163 +2115,3 @@
         margin-bottom: 20px;
         color: #434343;
     }
-
-    /* Cover Card Styles */
-.cover-card {
-    flex: 0 0 150px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    position: relative;
-    padding: 20px;
-    background: rgb(40, 40, 41);
-    opacity:0.8;
-    border-radius: 12px;
-    aspect-ratio: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-}
-
-.cover-card[data-state="open"], .cover-card:hover {
-    background-color: rgb(40, 40, 41);
-    opacity:1;
-}
-
-.cover-card[data-state="closed"] {
-    background-color: rgb(40, 40, 41);
-    
-}
-.cover-card[data-state="open"] .device-name,
-.cover-card[data-state="open"] .cover-position {
-    color: white;
-}
-
-.cover-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.cover-position {
-    font-weight: 200;
-    font-size: 20px;
-    color: #fff;
-}
-
-.cover-card[data-state="open"] .toggle-circle {
-    background: #67c7ff;
-    color: #000000;
-}
-
-.cover-controls {
-    display: flex;
-    flex-direction: column;
-    width: 100%;
-    gap: 10px;
-}
-
-.cover-state {
-    display: flex;
-    justify-content: center;
-    font-size: 1.1rem;
-    font-weight: 200;
-    margin-bottom: 5px;
-}
-
-.cover-slider-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    width: 100%;
-    margin-bottom: 10px;
-}
-
-.cover-position-slider {
-    width: 90%;
-    -webkit-appearance: none;
-    height: 8px;
-    background: #d3d3d3;
-    outline: none;
-    border-radius: 4px;
-    margin: 10px 0;
-}
-
-.cover-position-slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 20px;
-    height: 20px;
-    background: #434343;
-    border-radius: 50%;
-    cursor: pointer;
-}
-
-.cover-position-slider::-moz-range-thumb {
-    width: 20px;
-    height: 20px;
-    background: #434343;
-    border-radius: 50%;
-    cursor: pointer;
-}
-
-.cover-card[data-state="open"] .cover-position-slider::-webkit-slider-thumb {
-    background: white;
-}
-
-.cover-card[data-state="open"] .cover-position-slider::-moz-range-thumb {
-    background: white;
-}
-
-.cover-buttons {
-    display: flex;
-    justify-content: space-around;
-    width: 100%;
-}
-
-.cover-buttons button {
-    background-color: #434343;
-    color: white;
-    border: none;
-    border-radius: 50%;
-    width: 40px;
-    height: 40px;
-    cursor: pointer;
-    transition: background-color 0.3s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.cover-buttons button:hover:not(:disabled) {
-    background-color: #000000;
-}
-
-.cover-buttons button:disabled {
-    background-color: #cccccc;
-    cursor: not-allowed;
-    opacity: 0.6;
-}
-
-.cover-card[data-state="open"] .cover-buttons button {
-    background-color: white;
-    color: #434343;
-}
-
-.cover-card[data-state="open"] .cover-buttons button:hover:not(:disabled) {
-    background-color: #f0f0f0;
-}
-
-.cover-card[data-state="open"] .cover-buttons button:disabled {
-    background-color: rgba(255, 255, 255, 0.5);
-    color: rgba(67, 67, 67, 0.5);
-}
-
-.cover-slider-value {
-    font-size: 14px;
-    color: #666;
-    margin-top: 5px;
-}
-
-.cover-card[data-state="open"] .cover-slider-value {
-    color: white;
-}

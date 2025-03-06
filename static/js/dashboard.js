@@ -24,19 +24,6 @@ function updateTime() {
     document.getElementById('currentDate').textContent = dateString;
 }
 
-function getBlindIcons(device) {
-    console.log('getBlindIcons function', device);
-    if (device === 'open') {
-        iconName = 'blindopen';
-    }
-    else {
-        iconName = 'blindclosed'; 
-    };   
-    console.log('returning icon', iconName);
-    // Return the SVG string for the icon
-    return blindIconsSVGs[iconName] || '';
-}
-
 // Weather functions
 async function updateWeather() {
     try {
@@ -339,8 +326,6 @@ function handleStateChange(data) {
             updateScriptPill(entity_id, new_state);
         } else if (entity_id.startsWith('media_player.')) {
             updateMediaPlayerCard(entity_id, new_state);
-        } else if (entity_id.startsWith('cover.')) {
-            updateCoverCard(entity_id, new_state);
         }
     }
     
@@ -958,8 +943,7 @@ function displayRoomDevices(roomId) {
                                 return `
                                     <div class="device-card ${device.type === 'light' ? 'light-card' : ''} 
                                                     ${device.type === 'sensor' ? 'sensor-card' : ''}
-                                                    ${device.type === 'switch' ? 'switch-card' : ''}
-                                                    ${device.type === 'cover' ? 'cover-card' : ''} 
+                                                    ${device.type === 'switch' ? 'switch-card' : ''}" 
                                          data-device-id="${device.id}"
                                          data-state="${currentState.state || 'unknown'}"
                                          ${(device.type === 'switch') ? 'data-action="toggle"' : ''}>
@@ -969,10 +953,6 @@ function displayRoomDevices(roomId) {
                                                 state: currentState.state,
                                                 attributes: currentState.attributes
                                             }) : device.type === 'switch' ? getSwitchControls({
-                                                ...device,
-                                                state: currentState.state,
-                                                attributes: currentState.attributes
-                                            }) : device.type === 'cover' ? getCoverControls({
                                                 ...device,
                                                 state: currentState.state,
                                                 attributes: currentState.attributes
@@ -1119,8 +1099,6 @@ function updateDeviceCard(card, state) {
         controls.innerHTML = getLightControls(device);
     } else if (device.type === 'switch') {
         controls.innerHTML = getSwitchControls(device);
-    } else if (device.type === 'cover') {
-        controls.innerHTML = getCoverControls(device, state);
     } else {
         controls.innerHTML = getDeviceControls(device);
     }
@@ -1136,8 +1114,6 @@ function getDeviceControls(device) {
             return getClimateControls(device);
         case 'sensor':
             return getSensorControls(device);
-        case 'cover':
-            return getCoverControls(device);
         default:
             return `<button class="toggle-btn" data-action="toggle">
                         ${device.state === 'on' ? 'Turn Off' : 'Turn On'}
@@ -1213,42 +1189,6 @@ function setupDeviceControlListeners() {
             });
         }
     });
-
-        // Cover controls
-    document.querySelectorAll('.cover-open-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const card = btn.closest('.device-card');
-            const entityId = card.dataset.deviceId;
-            openCover(entityId);
-        });
-    });
-    
-    document.querySelectorAll('.cover-close-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const card = btn.closest('.device-card');
-            const entityId = card.dataset.deviceId;
-            closeCover(entityId);
-        });
-    });
-    
-    document.querySelectorAll('.cover-stop-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const card = btn.closest('.device-card');
-            const entityId = card.dataset.deviceId;
-            stopCover(entityId);
-        });
-    });
-    
-    // Add debounced listener for cover position sliders to avoid too many API calls
-    document.querySelectorAll('.cover-position-slider').forEach(slider => {
-        slider.addEventListener('change', () => {
-            const card = slider.closest('.device-card');
-            const entityId = card.dataset.deviceId;
-            const position = slider.value;
-            setCoverPosition(entityId, position);
-        });
-    });
-
 }
 
 function showLoader(card) {
@@ -2576,240 +2516,4 @@ function updateVolumeIcon(volume) {
     } else {
         volumeButton.className = 'fas fa-volume-high';
     }
-}
-
-// Add function for Cover Entities
-
-function updateCoverCard(entityId, state) {
-    const card = document.querySelector(`[data-device-id="${entityId}"]`);
-    if (!card) return;
-    
-    // Update card state
-    card.setAttribute('data-state', state.state);
-
-    // Update position display if available
-    const positionDisplay = card.querySelector('.cover-position');
-    if (positionDisplay) {
-        const position = state.attributes?.current_position;
-        if (position !== undefined) {
-            positionDisplay.textContent = `${Math.round(position)}%`;
-        } else {
-            // If position is not available, show the state
-            positionDisplay.textContent = state.state.charAt(0).toUpperCase() + state.state.slice(1);
-        }
-    }
-
-    // Update slider if available
-    const positionSlider = card.querySelector('.cover-position-slider');
-    if (positionSlider && state.attributes?.current_position !== undefined) {
-        positionSlider.value = state.attributes.current_position;
-        positionSlider.disabled = state.state === 'unavailable';
-    }
-
-    // Update button states
-    const openBtn = card.querySelector('.cover-open-btn');
-    const closeBtn = card.querySelector('.cover-close-btn');
-    const stopBtn = card.querySelector('.cover-stop-btn');
-
-    if (openBtn && closeBtn && stopBtn) {
-        openBtn.disabled = state.state === 'open' || state.state === 'opening' || state.state === 'unavailable';
-        closeBtn.disabled = state.state === 'closed' || state.state === 'closing' || state.state === 'unavailable';
-        stopBtn.disabled = (state.state !== 'opening' && state.state !== 'closing') || state.state === 'unavailable';
-    }
-
-    // Update icon based on state
-    const stateIcon = card.querySelector('.device-state-icon');
-    if (stateIcon) {
-        let iconClass = 'fas fa-window-maximize';
-        
-        if (state.state === 'open') {
-            iconClass = 'fas fa-window-maximize';
-        } else if (state.state === 'closed') {
-            iconClass = 'fas fa-window-minimize';
-        } else if (state.state === 'opening') {
-            iconClass = 'fas fa-arrow-up';
-        } else if (state.state === 'closing') {
-            iconClass = 'fas fa-arrow-down';
-        }
-        
-        stateIcon.className = `device-state-icon ${iconClass}`;
-    }
-}
-
-async function openCover(entityId) {
-    const card = document.querySelector(`[data-device-id="${entityId}"]`);
-    if (!card) return;
-    
-    showLoader(card);
-    pendingUpdates.add(entityId);
-    
-    try {
-        const response = await fetch('/api/services/cover/open_cover', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                entity_id: entityId
-            })
-        });
-        
-        if (!response.ok) {
-            throw new Error(`Failed to open cover: ${response.statusText}`);
-        }
-    } catch (error) {
-        console.error('Error opening cover:', error);
-        showToast(`Error opening cover: ${error.message}`, 3000);
-    } finally {
-        hideLoader(card);
-    }
-}
-
-async function closeCover(entityId) {
-    const card = document.querySelector(`[data-device-id="${entityId}"]`);
-    if (!card) return;
-    
-    showLoader(card);
-    pendingUpdates.add(entityId);
-    
-    try {
-        const response = await fetch('/api/services/cover/close_cover', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                entity_id: entityId
-            })
-        });
-        
-        if (!response.ok) {
-            throw new Error(`Failed to close cover: ${response.statusText}`);
-        }
-    } catch (error) {
-        console.error('Error closing cover:', error);
-        showToast(`Error closing cover: ${error.message}`, 3000);
-    } finally {
-        hideLoader(card);
-    }
-}
-
-async function stopCover(entityId) {
-    const card = document.querySelector(`[data-device-id="${entityId}"]`);
-    if (!card) return;
-    
-    showLoader(card);
-    pendingUpdates.add(entityId);
-    
-    try {
-        const response = await fetch('/api/services/cover/stop_cover', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                entity_id: entityId
-            })
-        });
-        
-        if (!response.ok) {
-            throw new Error(`Failed to stop cover: ${response.statusText}`);
-        }
-    } catch (error) {
-        console.error('Error stopping cover:', error);
-        showToast(`Error stopping cover: ${error.message}`, 3000);
-    } finally {
-        hideLoader(card);
-    }
-}
-
-async function setCoverPosition(entityId, position) {
-    const card = document.querySelector(`[data-device-id="${entityId}"]`);
-    if (!card) return;
-    
-    showLoader(card);
-    pendingUpdates.add(entityId);
-    
-    try {
-        const response = await fetch('/api/services/cover/set_cover_position', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                entity_id: entityId,
-                position: parseInt(position)
-            })
-        });
-        
-        if (!response.ok) {
-            throw new Error(`Failed to set cover position: ${response.statusText}`);
-        }
-    } catch (error) {
-        console.error('Error setting cover position:', error);
-        showToast(`Error setting cover position: ${error.message}`, 3000);
-    } finally {
-        hideLoader(card);
-    }
-}
-
-function getCoverCard(device, state) {
-    const isOpen = state.state === 'open';
-    const isClosed = state.state === 'closed';
-    const isOpening = state.state === 'opening';
-    const isClosing = state.state === 'closing';
-    const position = state.attributes?.current_position;
-    const supportsPosition = position !== undefined;
-    
-    let stateIconClass = 'fas fa-window-maximize';
-    if (isClosed) {
-        stateIconClass = 'fas fa-window-minimize';
-    } else if (isOpening) {
-        stateIconClass = 'fas fa-arrow-up';
-    } else if (isClosing) {
-        stateIconClass = 'fas fa-arrow-down';
-    }
-    
-    return `
-        <div class="device-card cover-card" 
-             data-device-id="${device.id}" 
-             data-state="${state.state}">
-            <div class="device-header">
-                <div class="device-name">${device.name}</div>
-                <div class="device-state">
-                    <i class="device-state-icon ${stateIconClass}"></i>
-                </div>
-            </div>
-            <div class="device-controls">
-                ${getCoverControls(device, state)}
-            </div>
-        </div>
-    `;
-}
-
-
-function getCoverControls(device, state) {
-    const isOpen = device.state === 'open';
-    const isClosed = device.state === 'closed';
-    const isOpening = device.state === 'opening';
-    const isClosing = device.state === 'closing';
-    const isUnavailable = device.state === 'unavailable';
-    const position = device.state.attributes?.current_position;
-    const supportsPosition = position !== undefined;
-    if (device.state === 'open') {
-        iconName = 'blindopen';
-    }
-    else {
-        iconName = 'blindclosed'; 
-    };   
-    console.log('getCoverControls', iconName);
-    return `
-        <div class="cover-header">
-            <span class="cover-position">${isUnavailable ? 'Unavailable' : isOpen ? 'Open' : 'Closed'}</span>
-            <div class="toggle-circle" data-action="toggle">
-                ${blindIconsSVGs[iconName]}
-            </div>
-        </div>
-        <div class="device-name">${device.name}</div>
-    `;
 }
