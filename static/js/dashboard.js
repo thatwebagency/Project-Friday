@@ -326,6 +326,8 @@ function handleStateChange(data) {
             updateScriptPill(entity_id, new_state);
         } else if (entity_id.startsWith('media_player.')) {
             updateMediaPlayerCard(entity_id, new_state);
+        } else if (entity_id.startsWith('cover.')) {
+            updateCoverCard(entity_id, new_state);
         }
     }
     
@@ -363,6 +365,13 @@ function handleStateChange(data) {
             } else if (new_state.state === 'off' && old_state?.state === 'on') {
                 message = `${friendlyName} turned off`;
             }
+        } else if (entity_id.startsWith('cover.')) {
+            const friendlyName = new_state.attributes?.friendly_name || 'Blind';
+            if (new_state.state === 'open' && old_state?.state === 'closed') {
+                message = `${friendlyName} opened`;
+            } else if (new_state.state === 'closed' && old_state?.state === 'open') {
+                message = `${friendlyName} closed`;
+            }
         }
 
         // Show notification if we have a message
@@ -393,6 +402,21 @@ function updateLightCard(entityId, state) {
         }
     }
     
+    // update the getIcon used when state changes
+    const toggleCircle = card.querySelector('.toggle-circle');
+    if (toggleCircle) {
+        function getIcons(state) {
+            const iconMap = {
+                on: 'lighton',
+                off: 'lightoff',
+            }
+            const iconName = iconMap[state] || 'fa-question';
+            console.log('iconName:', iconName);
+            return IconSVGs[iconName] || '';
+        }
+        toggleCircle.innerHTML = state.state === 'on' ? getIcons('on') : getIcons('off');
+    }
+
     // Hide loader if it exists
     const loader = card.querySelector('.card-loader');
     if (loader) {
@@ -409,6 +433,46 @@ function updateLightCard(entityId, state) {
                 brightnessValue.textContent = `${brightnessPercent}%`;
             } else {
                 brightnessValue.textContent = 'Off';
+            }
+        }
+    }
+}
+
+// Update Cover Card Function
+function updateCoverCard(entityId, state) {
+    const card = document.querySelector(`[data-device-id="${entityId}"]`);
+    if (!card) return;
+    
+    // Update card state attribute
+    card.setAttribute('data-state', state.state);
+    
+    // Update cover position display
+    const coverPosition = card.querySelector('.cover-position');
+    if (coverPosition) {
+        if (state.state === 'open') {
+            const coverPositionPercent = Math.round((state.attributes?.current_position || 0) / 255 * 100);
+            coverPosition.textContent = `${coverPositionPercent}%`;
+        } else {
+            coverPosition.textContent = 'Closed';
+        }
+    }
+    
+    // Hide loader if it exists
+    const loader = card.querySelector('.card-loader');
+    if (loader) {
+        loader.remove();
+    }
+    
+    // If cover modal is open for this device, update it
+    const coverModal = document.querySelector('.cover-modal.show');
+    if (coverModal) {
+        const coverPositionValue = coverModal.querySelector('.cover-position-value');
+        if (coverPositionValue) {
+            if (state.state === 'open') {
+                const coverPositionPercent = Math.round((state.attributes?.current_position || 0) / 255 * 100);
+                coverPositionValue.textContent = `${coverPositionPercent}%`;
+            } else {
+                coverPositionValue.textContent = 'Closed';
             }
         }
     }
@@ -892,7 +956,8 @@ function displayRoomDevices(roomId) {
         switches: devices.filter(d => d.type === 'switch').sort((a, b) => a.order - b.order),
         climate: devices.filter(d => d.type === 'climate').sort((a, b) => a.order - b.order),
         media_players: devices.filter(d => d.type === 'media_player').sort((a, b) => a.order - b.order),
-        other: devices.filter(d => !['light', 'climate', 'sensor', 'switch', 'script', 'media_player'].includes(d.type))
+        blinds: devices.filter(d => d.type === 'cover').sort((a, b) => a.order - b.order),
+        other: devices.filter(d => !['light', 'climate', 'sensor', 'switch', 'script', 'media_player', 'cover'].includes(d.type))
             .sort((a, b) => a.order - b.order),
     };
     // Add scripts section if there are scripts
@@ -917,7 +982,7 @@ function displayRoomDevices(roomId) {
         .some(([_, devices]) => devices.length > 0);
 
     // Define the order of categories
-    const categoryOrder = ['sensors', 'lights', 'switches', 'media_players', 'other'];
+    const categoryOrder = ['sensors', 'lights', 'switches', 'blinds', 'media_players', 'other'];
 
     // Generate sections HTML only if there are non-climate devices
     const sectionsHTML = hasNonClimateDevices ? 
@@ -943,7 +1008,8 @@ function displayRoomDevices(roomId) {
                                 return `
                                     <div class="device-card ${device.type === 'light' ? 'light-card' : ''} 
                                                     ${device.type === 'sensor' ? 'sensor-card' : ''}
-                                                    ${device.type === 'switch' ? 'switch-card' : ''}" 
+                                                    ${device.type === 'switch' ? 'switch-card' : ''}
+                                                    ${device.type === 'cover' ? 'cover-card' : ''}" 
                                          data-device-id="${device.id}"
                                          data-state="${currentState.state || 'unknown'}"
                                          ${(device.type === 'switch') ? 'data-action="toggle"' : ''}>
@@ -953,6 +1019,10 @@ function displayRoomDevices(roomId) {
                                                 state: currentState.state,
                                                 attributes: currentState.attributes
                                             }) : device.type === 'switch' ? getSwitchControls({
+                                                ...device,
+                                                state: currentState.state,
+                                                attributes: currentState.attributes
+                                            }) : device.type === 'cover' ? getCoverControls({
                                                 ...device,
                                                 state: currentState.state,
                                                 attributes: currentState.attributes
@@ -1099,6 +1169,8 @@ function updateDeviceCard(card, state) {
         controls.innerHTML = getLightControls(device);
     } else if (device.type === 'switch') {
         controls.innerHTML = getSwitchControls(device);
+    } else if (device.type === 'cover') {
+        controls.innerHTML = getCoverControls(device);
     } else {
         controls.innerHTML = getDeviceControls(device);
     }
@@ -1114,6 +1186,8 @@ function getDeviceControls(device) {
             return getClimateControls(device);
         case 'sensor':
             return getSensorControls(device);
+        case 'cover':
+            return getCoverControls(device);
         default:
             return `<button class="toggle-btn" data-action="toggle">
                         ${device.state === 'on' ? 'Turn Off' : 'Turn On'}
@@ -1121,20 +1195,56 @@ function getDeviceControls(device) {
     }
 }
 
+function getCoverControls(device) {
+    const isOpen = device.state === 'open';
+    const position = device.attributes?.current_position || 0;
+    const positionPercent = Math.round((position / 255) * 100);
+    const isUnavailable = device.state === 'unavailable';
+
+    function getIcons(state) {
+        const iconMap = {
+            open: 'blindopen',
+            closed: 'blindclosed',
+        }
+        const iconName = iconMap[state] || 'fa-question';
+        console.log('iconName:', iconName);
+        return IconSVGs[iconName] || '';
+    }
+
+    return `
+        <div class="cover-header">
+            <span class="cover-position">${isUnavailable ? 'Unavailable' : isOpen ? `${positionPercent}%` : 'Closed'}</span>
+            <div class="toggle-circle" data-action="toggle">
+                ${isOpen ? getIcons('open') : getIcons('closed')}
+            </div>
+        </div>
+        <div class="device-name">${device.name}</div>
+    `;
+}
 function getLightControls(device) {
     const isOn = device.state === 'on';
     const brightness = device.attributes?.brightness || 0;
     const brightnessPercent = Math.round((brightness / 255) * 100);
     const isUnavailable = device.state === 'unavailable';
 
+    function getIcons(state) {
+        const iconMap = {
+            on: 'lighton',
+            off: 'lightoff',
+        }
+        const iconName = iconMap[state] || 'fa-question';
+        console.log('iconName:', iconName);
+        return IconSVGs[iconName] || '';
+    }
+
     return `
         <div class="light-header">
             <span class="brightness-level">${isUnavailable ? 'Unavailable' : isOn ? `${brightnessPercent}%` : 'Off'}</span>
             <div class="toggle-circle" data-action="toggle">
-                <i class="fa-regular fa-lightbulb"></i>
+            ${isOn ? getIcons('on') : getIcons('off')}
             </div>
         </div>
-        <div class="device-name">${device.name}</div>
+        <div class="device-name">${device.attributes?.friendly_name || device.name}</div>
     `;
 }
 
@@ -1162,7 +1272,7 @@ function getSensorControls(device) {
         <div class="sensor-value">
             ${value}<span class="sensor-unit">${unit}</span>
         </div>
-        <div class="device-name">${device.name}</div>
+        <div class="device-name">${device.attributes?.friendly_name || device.name}</div>
     `;
 }
 
@@ -1180,6 +1290,14 @@ function setupDeviceControlListeners() {
             });
         }
 
+        // Card click for cover modal
+        if (card.classList.contains('cover-card')) {
+            card.addEventListener('click', (e) => {
+                if (!e.target.closest('.toggle-circle')) {
+                    showCoverModal(deviceId);
+                }
+            });
+        }
         // Card click for brightness modal
         if (card.classList.contains('light-card')) {
             card.addEventListener('click', (e) => {
@@ -1270,7 +1388,13 @@ async function toggleDevice(entityId) {
 
     pendingUpdates.add(entityId);
     const domain = entityId.split('.')[0];
-    const service = entityStates[entityId]?.state === 'on' ? 'turn_off' : 'turn_on';
+    let service;
+
+    if (domain === 'cover') {
+    service = entityStates[entityId]?.state === 'open' ? 'close_cover' : 'open_cover';
+} else {
+    service = entityStates[entityId]?.state === 'on' ? 'turn_off' : 'turn_on';
+}
     const msgId = getNextMessageId();
 
     try {
@@ -1335,6 +1459,44 @@ async function updateBrightness(entityId, brightness_pct) {
     }
 }
 
+// Update updatePosition function with error handling
+async function updatePosition(entityId, position_pct) {
+    if (!haSocket || haSocket.readyState !== WebSocket.OPEN) {
+        showToast('Not connected to Home Assistant', 5000);
+        return;
+    }
+
+    const card = document.querySelector(`[data-device-id="${entityId}"]`);
+    if (!card) return;
+
+    pendingUpdates.add(entityId);
+    const msgId = getNextMessageId();
+
+    try {
+        haSocket.send(JSON.stringify({
+            id: msgId,
+            type: 'call_service',
+            domain: 'cover',
+            service: 'set_cover_position',
+            target: {
+                entity_id: entityId
+            },
+            service_data: {
+                position_pct: parseInt(position_pct)
+            }
+        }));
+
+        await handleCommandResponse(msgId, entityId);
+    } catch (error) {
+        console.error('Error updating cover position:', error);
+        showToast(`Failed to update cover position: ${error.message}`, 5000);
+
+        // Remove loader and pending update
+        const loader = card.querySelector('.card-loader');
+        if (loader) loader.remove();
+        pendingUpdates.delete(entityId);
+    }
+}
 // Update updateClimateTemp function with error handling
 async function updateClimateTemp(entityId, temperature) {
     if (!haSocket || haSocket.readyState !== WebSocket.OPEN) {
@@ -1450,7 +1612,68 @@ function showBrightnessModal(deviceId) {
         }
     });
 }
+function showCoverModal(deviceId) {
+    const device = entityStates[deviceId];
+    const position = device?.attributes?.current_position || 0;
+    const coverPositionPercent = Math.round((position / 255) * 100);
+    const isOpen = device?.state === 'open';
 
+    // Remove existing modal if any
+    const existingModal = document.querySelector('.cover-modal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+
+    const modal = document.createElement('div');
+    modal.className = 'cover-modal';
+    modal.innerHTML = `
+        <div class="cover-slider-container">
+            <h3>${device?.attributes?.friendly_name || 'Blind'}</h3>
+            <input type="range" 
+                   class="vertical-position-slider" 
+                   value="${coverPositionPercent}" 
+                   min="0" 
+                   max="100"
+                   step="1">
+            <div class="position-value">${isOpen ? `${coverPositionPercent}%` : 'Closed'}</div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Show modal with animation
+    requestAnimationFrame(() => {
+        modal.classList.add('show');
+    });
+
+    // Setup event listeners
+    const slider = modal.querySelector('.vertical-position-slider');
+    const coverPositionValue = modal.querySelector('.position-value');
+
+    // Update display during sliding without sending updates
+    slider.addEventListener('input', (e) => {
+        const percent = parseInt(e.target.value);
+        coverPositionValue.textContent = percent === 0 ? 'Closed' : `${percent}%`;
+    });
+
+    // Send update only when sliding ends
+    slider.addEventListener('change', (e) => {
+        const percent = parseInt(e.target.value);
+
+        // Show loader when updating brightness
+        const card = document.querySelector(`[data-device-id="${deviceId}"]`);
+        if (card) showLoader(card);
+
+        updatePosition(deviceId, percent);
+    });
+
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.classList.remove('show');
+            setTimeout(() => modal.remove(), 300);
+        }
+    });
+}
 function setupClimateControlListeners() {
     // Temperature controls
     document.querySelectorAll('.temp-btn').forEach(btn => {
@@ -1799,7 +2022,7 @@ function getSwitchControls(device) {
                 <i class="fa-solid fa-power-off"></i>
             </div>
         </div>
-        <div class="device-name">${device.name}</div>
+        <div class="device-name">${device.attributes?.friendly_name || device.name}</div>
     `;
 }
 
@@ -1811,8 +2034,9 @@ document.addEventListener('click', async (event) => {
     const deviceId = deviceCard.dataset.deviceId;
     const isLight = deviceCard.classList.contains('light-card');
     const isSwitch = deviceCard.classList.contains('switch-card');
+    const isCover = deviceCard.classList.contains('cover-card');
 
-    if (isLight || isSwitch) {
+    if (isLight || isSwitch || isCover) {
         // Show loader
         const loader = document.createElement('div');
         loader.className = 'card-loader';
@@ -1827,9 +2051,15 @@ document.addEventListener('click', async (event) => {
                 throw new Error('WebSocket not connected');
             }
 
-            const domain = isLight ? 'light' : 'switch';
-            const service = deviceCard.dataset.state === 'on' ? 'turn_off' : 'turn_on';
+            let domain, service;
 
+            if (isCover) {  
+            domain = 'cover';
+            service = deviceCard.dataset.state === 'open' ? 'close_cover' : 'open_cover';
+            } else {
+            domain = isLight ? 'light' : 'switch';
+            service = deviceCard.dataset.state === 'on' ? 'turn_off' : 'turn_on';
+            }
             haSocket.send(JSON.stringify({
                 id: getNextMessageId(),
                 type: 'call_service',
@@ -2100,7 +2330,7 @@ function getMediaPlayerCard(device, state) {
              style="${artworkUrl ? `background-image: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.7)), url('${artworkUrl}')` : ''}">
             <div class="media-content">
                 <div class="media-info">
-                    <div class="device-name">${device.name}</div>
+                    <div class="device-name">${device.attributes?.friendly_name || device.name}</div>
                     <div class="media-title">${state.attributes?.media_title || 'Nothing Playing'}</div>
                     <div class="media-artist">${state.attributes?.media_artist || ''}</div>
                 </div>
