@@ -4,6 +4,8 @@
 <script src="{{ url_for('static', filename='js/weatherIconsSVGs.js') }}"></script>
 <script src="{{ url_for('static', filename='js/IconSVGs.js') }}"></script>
 <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+<script src="{{ url_for('static', filename='js/topbar.js') }}"></script>
+<script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
 <div class="dashboard-container">
     <div class="loader-modal" id="loaderModal">
@@ -12,6 +14,7 @@
             <div class="loader-spinner"></div>
         </div>
     </div>
+
     <!-- Left Section -->
     <div class="dashboard-left">
         <a href="/settings" class="settings-link">
@@ -44,7 +47,8 @@
 
     <!-- Right Section -->
     <div class="dashboard-right">
-        
+            <!-- Top Bar -->
+    <div class="dashboard-topbar"></div>
         <div class="room-content" id="roomContent">
             <!-- Devices for selected room will be populated here -->
         </div>
@@ -55,17 +59,17 @@
             <h2 class="todayheading">What's On Today</h2>
             
                 
-            <div class="todaycontent">content</div>
+            <div id="todaycontent" class="todaycontent"></div>
             <h2 class="upcomingheading">What's Coming Up</h2>
             
                 
-            <div class="upcomingcontent">content</div>
+            <div id="upcomingcontent" class="upcomingcontent"></div>
         
         
         <div class="sidebarfooter">
             <div class="wastedays">
-                <h2 class="wastedaysheading">Waste Days</h2>
-            <div class="wastedayscontent">waste content</div>
+                <h2 class="wastedaysheading">Bin Days</h2>
+            <div id="wastecontent" class="wastedayscontent"></div>
             </div>
         </div>
         

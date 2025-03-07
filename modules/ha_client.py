@@ -319,3 +319,106 @@ class HomeAssistantClient:
             'valid': valid_entities,
             'invalid': invalid_entities
         }
+    # Calendar Events Functions
+    async def get_calendar_events(self, start_date=None, end_date=None, limit=10):
+        """Fetch calendar events from Home Assistant."""
+        if not self.connection:
+            await self.connect()
+        
+        # Get list of calendar entities first
+        message_id = self.message_id
+        self.message_id += 1
+        
+        message = {
+            "id": message_id,
+            "type": "get_states"
+        }
+        await self.connection.send(json.dumps(message))
+        response = await self.connection.recv()
+        response_data = json.loads(response)
+        
+        if not response_data.get("success", True):
+            error = response_data.get("error", {})
+            error_msg = error.get("message", "Unknown error")
+            logger.error(f"Error getting states: {error_msg}")
+            raise Exception(f"Failed to get states: {error_msg}")
+        
+        entities = response_data.get("result", [])
+        
+        # Filter for calendar entities
+        calendar_entities = []
+        for entity in entities:
+            if 'entity_id' in entity and entity['entity_id'].startswith('calendar.') or entity['entity_id'].startswith('calendar.bin'):
+                calendar_entities.append(entity['entity_id'])
+        
+        if not calendar_entities:
+            logger.info("No calendar entities found")
+            return []
+        
+        # Now request calendar events for each calendar entity
+        all_events = []
+        for entity_id in calendar_entities:
+            message_id = self.message_id
+            self.message_id += 1
+            
+            # Prepare service data with optional date parameters
+            service_data = {}
+            if start_date:
+                service_data["start_date_time"] = start_date
+            if end_date:
+                service_data["end_date_time"] = end_date
+                    
+            # Create message for calling the calendar service with return_response at top-level
+            message = {
+                "id": message_id,
+                "type": "call_service",
+                "domain": "calendar",
+                "service": "get_events",
+                "target": {
+                    "entity_id": entity_id
+                },
+                "service_data": service_data,
+                "return_response": True  # Moved here at the top level
+            }
+            
+            logger.debug(f"Getting calendar events for {entity_id} with message: {message}")
+                
+            await self.connection.send(json.dumps(message))
+            response = await self.connection.recv()
+            response_data = json.loads(response)
+            logger.debug(f"Received calendar events response: {response_data}")
+            if not response_data.get("success", True):
+                error = response_data.get("error", {})
+                error_msg = error.get("message", "Unknown error")
+                logger.error(f"Error getting calendar events: {error_msg}")
+                continue
+            
+            try:
+                # Get the response field which contains the calendar data
+                response_field = response_data.get("result", {}).get("response", {})
+                
+                # Get events for the specific calendar entity
+                calendar_events = response_field.get(entity_id, {}).get("events", [])
+                
+                # Add calendar name to each event
+                calendar_name = entity_id.replace('calendar.', '').replace('_', ' ').title()
+                for event in calendar_events:
+                    event['calendar_name'] = calendar_name
+                    event['calendar_id'] = entity_id
+                
+                all_events.extend(calendar_events)
+                logger.debug(f"Extracted {len(calendar_events)} events from {entity_id}")
+            
+            except Exception as e:
+                logger.error(f"Error parsing calendar events: {str(e)}")
+                logger.debug(f"Response data: {response_data}")
+        
+        # Sort events by start time
+        all_events.sort(key=lambda e: e.get('start', ''))
+        
+        # Limit the number of events if requested
+        if limit and len(all_events) > limit:
+            all_events = all_events[:limit]
+        
+        logger.debug(f"Returning {len(all_events)} total calendar events")
+        return all_events

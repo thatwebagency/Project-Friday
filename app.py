@@ -66,7 +66,7 @@ def get_spotify_client():
 def check_setup():
     # List of endpoints that should be accessible during setup
     setup_endpoints = ['static', 'setup', 'test_ha_connection', 'setup_ha', 'setup_rooms', 'setup_entities', 
-                      'get_ha_entities', 'get_rooms', 'dashboard', 'index', 'get_tracked_entities', 'rooms']  # Added 'get_tracked_entities'
+                      'get_ha_entities', 'get_rooms', 'dashboard', 'index', 'get_tracked_entities', 'rooms', 'get_calendar_events']  # Added 'get_tracked_entities'
     
     # Allow access to setup-related endpoints
     if (request.endpoint is None or 
@@ -75,7 +75,8 @@ def check_setup():
         request.path.startswith('/api/setup/') or
         request.path.startswith('/api/ha/') or    # Allow HA API endpoints
         request.path.startswith('/api/rooms') or  # Allow rooms API endpoint
-        request.path.startswith('/api/entities')): # Allow entities API endpoints
+        request.path.startswith('/api/entities') or # Allow entities API endpoints
+        request.path.startswith('/api/calendar')): 
         return
     
     # Check if setup is complete
@@ -421,7 +422,46 @@ def get_tracked_entities():
     except Exception as e:
         logger.error(f"Error getting tracked entities: {str(e)}")
         return jsonify({'error': str(e)}), 500
-
+#Calendar Events Route
+@app.route('/api/calendar/events')
+def get_calendar_events():
+    try:
+        # Get date range parameters
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        limit = request.args.get('limit', 10, type=int)
+        
+        # Get HA client
+        config = Configuration.query.first()
+        if not config:
+            return jsonify({"error": "Home Assistant not configured"}), 400
+        
+        global ha_client
+        if not ha_client or not ha_client.connection:
+            ha_client = HomeAssistantClient(
+                ws_url=config.ws_url,
+                access_token=config.access_token,
+                is_nabu_casa=config.is_nabu_casa
+            )
+        
+        # Run the async function to get calendar events
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            events = loop.run_until_complete(ha_client.get_calendar_events(
+                start_date=start_date,
+                end_date=end_date,
+                limit=limit
+            ))
+            loop.run_until_complete(ha_client.disconnect())
+        finally:
+            loop.close()
+        
+        return jsonify({"events": events})
+    except Exception as e:
+        logger.error(f"Error getting calendar events: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+        
 @app.route("/settings")
 def settings():
     return render_template('settings.html')
@@ -997,3 +1037,4 @@ if __name__ == "__main__":
     with app.app_context():
         db.create_all()
     app.run(host='0.0.0.0', port=8165, debug=True)
+

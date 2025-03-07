@@ -894,7 +894,52 @@
         flex: 1 1 45%;
         overflow-y: auto;
     }
-   
+   /* Add to your CSS styles */
+.calendar-events {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    width:100%;
+}
+
+.calendar-event {
+    width:100%;
+    margin-bottom: 12px;
+    padding: 8px;
+    border-radius: 8px;
+    background-color: rgba(255, 255, 255, 0.1);
+    display:flex;
+    flex-direction:row;
+}
+.event-pre {
+    height: 50px;
+    max-height: 50px;
+    border-left: 2px solid rgb(29, 112, 225);
+    padding-right: 1rem;
+}
+.event-content {
+    display:flex;
+    flex-direction:column;
+}
+.event-time {
+    font-weight: bold;
+    margin-bottom: 4px;
+}
+
+.event-date {
+    font-size: 0.9em;
+    opacity: 0.8;
+    margin-bottom: 4px;
+}
+
+.event-summary {
+    margin-bottom: 4px;
+}
+
+.event-calendar {
+    font-size: 0.8em;
+    opacity: 0.7;
+}
     /* Time Section */
     .time-section {
         margin-bottom: 40px;
@@ -1075,6 +1120,12 @@
     }
     
     /* Right Section Layout */
+    .dashboard-topbar {}
+    .topbar-greeting {
+        color:#fff;
+    font-size:3rem;
+    font-weight:400;
+}
     .dashboard-right {
         display: flex;
         flex-direction: column;
@@ -1524,7 +1575,20 @@
         backdrop-filter: blur(2px);
         border-radius: 12px;
     }
-    
+    .calendar-loader {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(255, 255, 255, 0.8);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 10;
+        backdrop-filter: blur(2px);
+        border-radius: 12px;
+    }
     .light-card[data-state="on"] .card-loader,
     .cover-card[data-state="open"] .card-loader  {
         background: rgba(0, 0, 0, 0.8);
